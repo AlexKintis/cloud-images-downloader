@@ -7,7 +7,7 @@ pub use models::Repository; // Re-export the model type to callers.
 /// Single, module-private cache (set exactly once).
 static CACHE: OnceLock<Vec<Repository>> = OnceLock::new();
 
-/// ---- Public API (serde hidden from callers) ----
+// ---- Public API (serde hidden from callers) ----
 
 /// Initialize from a JSON file path.
 #[allow(unused)]
@@ -20,7 +20,9 @@ pub fn init_from_file(path: impl AsRef<Path>) -> Result<(), ReposError> {
 #[allow(unused)]
 pub fn init_from_json_str(json: &str) -> Result<(), ReposError> {
     let parsed: Vec<Repository> = serde_json::from_str(json).map_err(ReposError::Json)?;
-    CACHE.set(parsed).map_err(|_| ReposError::AlreadyInitialized)?;
+    CACHE
+        .set(parsed)
+        .map_err(|_| ReposError::AlreadyInitialized)?;
     Ok(())
 }
 
@@ -32,8 +34,11 @@ pub fn init_from_env(var: &str) -> Result<(), ReposError> {
 }
 
 /// Return an owned `Vec<Repository>` (as requested).
+///
 /// # Example
+/// ```ignore
 /// let repos_vec = repos::all_owned()?;
+/// ```
 #[allow(unused)]
 pub fn all_owned() -> Result<Vec<Repository>, ReposError> {
     Ok(CACHE.get().ok_or(ReposError::NotInitialized)?.clone())
@@ -42,7 +47,10 @@ pub fn all_owned() -> Result<Vec<Repository>, ReposError> {
 /// Borrowing alternative to avoid cloning.
 #[allow(unused)]
 pub fn all() -> Result<&'static [Repository], ReposError> {
-    Ok(CACHE.get().map(|v| v.as_slice()).ok_or(ReposError::NotInitialized)?)
+    CACHE
+        .get()
+        .map(|v| v.as_slice())
+        .ok_or(ReposError::NotInitialized)
 }
 
 /// Optional: find by name without cloning.

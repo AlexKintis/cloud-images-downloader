@@ -30,10 +30,14 @@ where
         }
 
         // Show menu and get selected index (&usize)
-        let selected_index: &usize = menu.set_title(self.msg.as_str()).add_list(list).select().unwrap_or_else(|e| {
-            eprintln!("Menu error: {e}");
-            std::process::exit(1);
-        })?; // None if user canceled
+        let selected_index: &usize = menu
+            .set_title(self.msg.as_str())
+            .add_list(list)
+            .select()
+            .unwrap_or_else(|e| {
+                eprintln!("Menu error: {e}");
+                std::process::exit(1);
+            })?; // None if user canceled
 
         // Use *selected_index (usize) to index the items vec
         self.items.get(*selected_index).cloned()

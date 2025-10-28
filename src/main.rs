@@ -1,23 +1,25 @@
 mod cloud;
-mod debian;
 mod helpers;
 mod repositories;
 mod ubuntu;
-// TODO(debian): add `mod debian;` once debian_list(...) is implemented
+// TODO(debian): re-add `mod debian;` once the picker is implemented without
+// compilation errors.
 // TODO(almalinux): add `mod almalinux;` once almalinux_list(...) is implemented
 
-use anyhow::{Result, bail};
+use anyhow::Result;
+use anyhow::bail;
 use std::{env, path::PathBuf};
 
-//use debian::debian_select_image;
-use helpers::{fzf_invoker::FzfInvoker, image_resolver::download_file};
+use helpers::image_resolver::download_file;
 use repositories::{self as repos};
 use ubuntu::{Image, pick_ubuntu};
 
 use crate::helpers::choose_one;
 
 fn construct_properties_file_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("indexes.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("indexes.json")
 }
 
 /// A tiny wrapper to render the final selection cleanly
@@ -40,9 +42,8 @@ async fn pick_almalinux(_track: &str) -> Result<Image> {
     bail!("AlmaLinux picker not yet implemented (TODO).")
 }
 
-/// NOTE: remove
+/// Temporary stub until the Debian module is ready.
 async fn debian_select_image(_track: &str) -> Result<Image> {
-    // TODO(almalinux): implement almalinux_list(track, arch, only_disk_images)
     bail!("Debian picker not yet implemented (TODO).")
 }
 
