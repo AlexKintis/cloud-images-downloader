@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 pub use crate::cloud::{Catalog, Image};
 use crate::helpers::{arch_options_for, choose_one};
-use crate::repos;
+use crate::repositories;
 
 use anyhow::{Context, Result, bail, ensure};
 use reqwest::Client;
@@ -163,7 +163,7 @@ async fn construct_repo_catalogue<T: for<'de> serde::Deserialize<'de>>(url: &str
 
 /// Construct the repository url which contains the '{}' delimiter
 fn construct_repo_url(track: &str) -> String {
-    let catalog_url: String = repos::by_name("ubuntu")
+    let catalog_url: String = repositories::by_name("ubuntu")
         .unwrap_or_else(|err| panic!("{err}"))
         .unwrap()
         .url()
@@ -180,7 +180,7 @@ pub async fn ubuntu_list(
     target_arch: &str,
     only_disk_images: bool,
 ) -> Result<Vec<Image>> {
-    let repo_base_url_for_paths: String = repos::by_name("ubuntu")
+    let repo_base_url_for_paths: String = repositories::by_name("ubuntu")
         .unwrap_or_else(|err| panic!("{err}"))
         .unwrap()
         .other_parameters()

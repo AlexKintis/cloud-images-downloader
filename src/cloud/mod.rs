@@ -5,7 +5,7 @@ mod product;
 mod version;
 
 pub use catalog::Catalog;
-pub use image::Image;
+pub use image::{ChecksumKind, Image, ImageChecksum};
 pub use item::Item;
 pub use product::Product;
 pub use version::Version;

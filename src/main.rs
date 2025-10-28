@@ -1,20 +1,15 @@
 mod cloud;
 mod helpers;
 mod repositories;
-mod ubuntu;
-// TODO(debian): re-add `mod debian;` once the picker is implemented without
-// compilation errors.
 // TODO(almalinux): add `mod almalinux;` once almalinux_list(...) is implemented
 
-use anyhow::Result;
-use anyhow::bail;
+use anyhow::{Result, bail};
 use std::{env, path::PathBuf};
 
-use helpers::image_resolver::download_file;
-use repositories::{self as repos};
-use ubuntu::{Image, pick_ubuntu};
+use helpers::{choose_one, image_resolver::download_file};
+use repositories::{self as repos, debian, ubuntu};
 
-use crate::helpers::choose_one;
+use cloud::Image;
 
 fn construct_properties_file_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -30,21 +25,22 @@ fn print_selection(distro: &str, arch: &str, version: &str, image: &Image) {
     println!("Arch:     {arch}");
     println!("Version:  {version}");
     println!("Image:");
-    println!("  name:    {}", image.name());
-    println!("  version: {}", image.version());
-    println!("  arch:    {}", image.arch());
-    println!("  url:     {}", image.url());
-    println!("  sha256:  {}", image.sha256().unwrap_or("<none>"));
+    println!("  name:        {}", image.name());
+    println!("  distro ver:  {}", image.distro_version());
+    println!("  version:     {}", image.version());
+    println!("  type:        {}", image.image_type());
+    println!("  arch:        {}", image.arch());
+    println!("  url:         {}", image.url());
+    if let Some(checksum) = image.checksum() {
+        println!("  checksum:    {} ({})", checksum.value(), checksum.kind());
+    } else {
+        println!("  checksum:    <none>");
+    }
 }
 
 async fn pick_almalinux(_track: &str) -> Result<Image> {
     // TODO(almalinux): implement almalinux_list(track, arch, only_disk_images)
     bail!("AlmaLinux picker not yet implemented (TODO).")
-}
-
-/// Temporary stub until the Debian module is ready.
-async fn debian_select_image(_track: &str) -> Result<Image> {
-    bail!("Debian picker not yet implemented (TODO).")
 }
 
 /// Full 3-step wizard: distro -> arch -> version -> image
@@ -55,16 +51,15 @@ async fn prompt_and_select(track: &str) -> Result<(String, String, String, Image
     match distro.as_str() {
         "Ubuntu" => {
             // pick_ubuntu also asks for arch + version internally
-            let img = pick_ubuntu(track).await?;
+            let img = ubuntu::pick_ubuntu(track).await?;
             let arch = img.arch().to_string();
             let version = img.version().to_string();
             Ok((distro, arch, version, img))
         }
         "Debian" => {
-            // When implemented, mirror Ubuntu flow
-            let img = debian_select_image(track).await?;
+            let (codename, img) = debian::pick_debian_interactive().await?;
             let arch = img.arch().to_string();
-            let version = img.version().to_string();
+            let version = format!("{codename} ({})", img.version());
             Ok((distro, arch, version, img))
         }
         "AlmaLinux" => {

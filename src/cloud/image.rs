@@ -1,4 +1,49 @@
 use reqwest::Url;
+use std::fmt;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChecksumKind {
+    Sha256,
+    Sha512,
+}
+
+impl ChecksumKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChecksumKind::Sha256 => "sha256",
+            ChecksumKind::Sha512 => "sha512",
+        }
+    }
+}
+
+impl fmt::Display for ChecksumKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageChecksum {
+    kind: ChecksumKind,
+    value: String,
+}
+
+impl ImageChecksum {
+    pub fn new(kind: ChecksumKind, value: impl Into<String>) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+        }
+    }
+
+    pub fn kind(&self) -> ChecksumKind {
+        self.kind
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Image {
@@ -8,7 +53,7 @@ pub struct Image {
     version: String,
     arch: String,
     url: String,
-    sha256: Option<String>,
+    checksum: Option<ImageChecksum>,
     image_type: String,
 }
 
@@ -22,7 +67,7 @@ impl Image {
         version: String,
         arch: String,
         url: String,
-        sha256: Option<String>,
+        checksum: Option<ImageChecksum>,
         image_type: String,
     ) -> Self {
         Self {
@@ -32,7 +77,7 @@ impl Image {
             version,
             arch,
             url,
-            sha256,
+            checksum,
             image_type,
         }
     }
@@ -71,9 +116,25 @@ impl Image {
         &self.url
     }
 
-    // Sha256 hash for image validation
+    pub fn checksum(&self) -> Option<&ImageChecksum> {
+        self.checksum.as_ref()
+    }
+
+    pub fn checksum_value(&self) -> Option<&str> {
+        self.checksum.as_ref().map(|c| c.value())
+    }
+
+    pub fn checksum_kind(&self) -> Option<ChecksumKind> {
+        self.checksum.as_ref().map(|c| c.kind())
+    }
+
+    /// Convenience for existing callers expecting SHA256 (returns `None` if the
+    /// checksum is another algorithm).
     pub fn sha256(&self) -> Option<&str> {
-        self.sha256.as_deref()
+        match self.checksum_kind() {
+            Some(ChecksumKind::Sha256) => self.checksum_value(),
+            _ => None,
+        }
     }
 
     // Sha256 hash for image validation
@@ -93,6 +154,8 @@ impl Image {
         sha256: Option<String>,
         image_type: String,
     ) -> Self {
+        let checksum = sha256.map(|value| ImageChecksum::new(ChecksumKind::Sha256, value));
+
         // Try to build an absolute URL, fallback to string concatenation
         let absolute_url = Url::parse(base_url)
             .and_then(|base| base.join(relative_path))
@@ -106,13 +169,31 @@ impl Image {
             version.to_string(),
             architecture.to_string(),
             absolute_url,
-            sha256,
+            checksum,
             image_type,
         )
     }
 
-    // TODO: implement
-    //pub fn from_parts(&self, name: String, url, arch, image_type, version, distro_version) {
-
-    //}
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        os: String,
+        name: String,
+        distro_version: String,
+        version: String,
+        arch: String,
+        url: String,
+        checksum: Option<ImageChecksum>,
+        image_type: String,
+    ) -> Self {
+        Image::new(
+            os,
+            name,
+            distro_version,
+            version,
+            arch,
+            url,
+            checksum,
+            image_type,
+        )
+    }
 }
