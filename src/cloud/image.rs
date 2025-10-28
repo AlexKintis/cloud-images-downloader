@@ -14,6 +14,7 @@ pub struct Image {
 
 #[allow(unused)]
 impl Image {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         os: String,
         name: String,
@@ -80,6 +81,7 @@ impl Image {
         &self.image_type
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn from_metadata(
         os_name: String,
         release_name: &str,

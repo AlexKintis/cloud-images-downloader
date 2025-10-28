@@ -9,6 +9,10 @@ use reqwest::Client;
 use std::fs;
 use std::io::Write;
 
+fn format_image_label(image: &Image) -> String {
+    format!("{} | {} | {}", image.name(), image.arch(), image.url())
+}
+
 /// Picking ubuntu
 pub async fn pick_ubuntu(track: &str) -> Result<Image> {
     // 1) Arch
@@ -22,23 +26,32 @@ pub async fn pick_ubuntu(track: &str) -> Result<Image> {
     ensure!(!images.is_empty(), "No Ubuntu images found for arch={arch}");
 
     // 3) Distro version (filter the working set after selection)
-    let mut distro_versions = images.iter().map(|i| i.distro_version().to_string()).collect::<Vec<_>>();
+    let mut distro_versions = images
+        .iter()
+        .map(|i| i.distro_version().to_string())
+        .collect::<Vec<_>>();
     distro_versions.sort();
     distro_versions.reverse();
     distro_versions.dedup();
 
     let distro_version = choose_one("Select Distro Version", distro_versions)?;
-    images = images.into_iter().filter(|i| i.distro_version() == distro_version).collect();
-    ensure!(!images.is_empty(), "No Ubuntu images found for distro_version={distro_version}");
+    images.retain(|i| i.distro_version() == distro_version);
+    ensure!(
+        !images.is_empty(),
+        "No Ubuntu images found for distro_version={distro_version}"
+    );
 
     // 4) Image version (filter again after selection)
-    let mut image_versions: Vec<String> = images.iter().map(|i| i.version().to_string()).collect::<Vec<_>>();
+    let mut image_versions: Vec<String> = images
+        .iter()
+        .map(|i| i.version().to_string())
+        .collect::<Vec<_>>();
     image_versions.sort();
     image_versions.reverse();
     image_versions.dedup();
 
     let image_version = choose_one("Select Image Version", image_versions)?;
-    images = images.into_iter().filter(|i| i.version() == image_version).collect();
+    images.retain(|i| i.version() == image_version);
     ensure!(
         !images.is_empty(),
         "No Ubuntu images found for distro_version={distro_version} and version={image_version}"
@@ -50,24 +63,22 @@ pub async fn pick_ubuntu(track: &str) -> Result<Image> {
     image_types.dedup();
 
     let image_type = choose_one("Select image type", image_types)?;
-    images = images.into_iter().filter(|i| i.image_type() == image_type).collect();
+    images.retain(|i| i.image_type() == image_type);
     ensure!(
         !images.is_empty(),
         "No Ubuntu images found for distro_version={distro_version}, version={image_version}, type={image_type}"
     );
 
     // 6) If a version maps to multiple artifacts, let the user pick one (now the working set is already scoped)
-    let labelize = |i: &Image| {
-        // Adjust as you prefer
-        format!("{} | {} | {}", i.name(), i.arch(), i.url())
-    };
-
-    let chosen_label = choose_one("Select Image Artifact", images.iter().map(|i| labelize(i)).collect())?;
+    let chosen_label = choose_one(
+        "Select Image Artifact",
+        images.iter().map(format_image_label).collect(),
+    )?;
 
     // Find back the chosen image
     let idx = images
         .iter()
-        .position(|i| labelize(i) == chosen_label)
+        .position(|i| format_image_label(i) == chosen_label)
         .expect("selected label must match one candidate");
 
     Ok(images[idx].clone())
@@ -90,7 +101,10 @@ async fn fetch_repo_json_file_to_tmp(url: &str, dest_path: &Path) -> Result<Path
         bail!("HTTP {} for {}", status, url);
     }
 
-    let bytes = res.bytes().await.with_context(|| format!("read body from {}", url))?;
+    let bytes = res
+        .bytes()
+        .await
+        .with_context(|| format!("read body from {}", url))?;
 
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
@@ -98,11 +112,14 @@ async fn fetch_repo_json_file_to_tmp(url: &str, dest_path: &Path) -> Result<Path
 
     // Write atomically: write to a tmp file then rename.
     let tmp = dest_path.with_extension("download");
-    let mut file = fs::File::create(&tmp).with_context(|| format!("create file {}", tmp.display()))?;
-    file.write_all(&bytes).with_context(|| format!("write file {}", tmp.display()))?;
+    let mut file =
+        fs::File::create(&tmp).with_context(|| format!("create file {}", tmp.display()))?;
+    file.write_all(&bytes)
+        .with_context(|| format!("write file {}", tmp.display()))?;
     drop(file);
 
-    fs::rename(&tmp, dest_path).with_context(|| format!("move {} -> {}", tmp.display(), dest_path.display()))?;
+    fs::rename(&tmp, dest_path)
+        .with_context(|| format!("move {} -> {}", tmp.display(), dest_path.display()))?;
 
     Ok(dest_path.to_path_buf())
 }
@@ -111,7 +128,11 @@ async fn fetch_repo_json_file_to_tmp(url: &str, dest_path: &Path) -> Result<Path
 /// or by downloading it once and caching it. Deserializes into `T`.
 async fn construct_repo_catalogue<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T> {
     // Decide the filename from the URL (fallback to "repo.json")
-    let file_name = url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or("repo.json");
+    let file_name = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("repo.json");
 
     // Get json file from temp folder
     let mut tmp_path: PathBuf = std::env::temp_dir();
@@ -131,16 +152,22 @@ async fn construct_repo_catalogue<T: for<'de> serde::Deserialize<'de>>(url: &str
     }
 
     // Read from the cached file and deserialize
-    let bytes = fs::read(&tmp_path).with_context(|| format!("read cached file {}", tmp_path.display()))?;
+    let bytes =
+        fs::read(&tmp_path).with_context(|| format!("read cached file {}", tmp_path.display()))?;
 
-    let data: T = serde_json::from_slice(&bytes).with_context(|| format!("parse JSON from {}", tmp_path.display()))?;
+    let data: T = serde_json::from_slice(&bytes)
+        .with_context(|| format!("parse JSON from {}", tmp_path.display()))?;
 
     Ok(data)
 }
 
 /// Construct the repository url which contains the '{}' delimiter
 fn construct_repo_url(track: &str) -> String {
-    let catalog_url: String = repos::by_name("ubuntu").unwrap_or_else(|err| panic!("{err}")).unwrap().url().to_string();
+    let catalog_url: String = repos::by_name("ubuntu")
+        .unwrap_or_else(|err| panic!("{err}"))
+        .unwrap()
+        .url()
+        .to_string();
     catalog_url.replacen("{}", track, 1)
 }
 
@@ -148,7 +175,11 @@ fn construct_repo_url(track: &str) -> String {
 /// - `track`: "releases" (stable) or "daily"
 /// - `arch`: "amd64", "arm64", "ppc64el", "s390x"
 /// - `only_disk_images`: if true, keep only `.img` and `.qcow2`
-pub async fn ubuntu_list(release_track: &str, target_arch: &str, only_disk_images: bool) -> Result<Vec<Image>> {
+pub async fn ubuntu_list(
+    release_track: &str,
+    target_arch: &str,
+    only_disk_images: bool,
+) -> Result<Vec<Image>> {
     let repo_base_url_for_paths: String = repos::by_name("ubuntu")
         .unwrap_or_else(|err| panic!("{err}"))
         .unwrap()
@@ -168,12 +199,11 @@ pub async fn ubuntu_list(release_track: &str, target_arch: &str, only_disk_image
     for (product_name, product_metadata) in catalog.products() {
         let mut resolved_architecture = product_metadata.arch().clone();
 
-        if resolved_architecture.is_none() {
-            if let Some(product_tail) = product_name.split(':').last() {
-                if matches!(product_tail, "amd64" | "arm64" | "ppc64el" | "s390x") {
-                    resolved_architecture = Some(product_tail.to_string());
-                }
-            }
+        if resolved_architecture.is_none()
+            && let Some(product_tail) = product_name.rsplit(':').next()
+            && matches!(product_tail, "amd64" | "arm64" | "ppc64el" | "s390x")
+        {
+            resolved_architecture = Some(product_tail.to_string());
         }
 
         if let Some(ref detected_architecture) = resolved_architecture {
@@ -184,7 +214,10 @@ pub async fn ubuntu_list(release_track: &str, target_arch: &str, only_disk_image
             continue; // no arch info
         }
 
-        let release_name = product_metadata.release().clone().unwrap_or_else(|| "ubuntu".to_string());
+        let release_name = product_metadata
+            .release()
+            .clone()
+            .unwrap_or_else(|| "ubuntu".to_string());
         let distro_version = product_metadata
             .distro_version()
             .clone()
@@ -198,7 +231,9 @@ pub async fn ubuntu_list(release_track: &str, target_arch: &str, only_disk_image
                     continue;
                 };
 
-                if only_disk_images && !(relative_path.ends_with(".img") || relative_path.ends_with(".qcow2")) {
+                if only_disk_images
+                    && !(relative_path.ends_with(".img") || relative_path.ends_with(".qcow2"))
+                {
                     continue;
                 }
 
