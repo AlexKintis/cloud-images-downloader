@@ -31,10 +31,7 @@ pub async fn available_codenames() -> Result<Vec<String>> {
         .with_context(|| format!("fetch Debian codename listing from {root}"))?;
 
     let dir_re = Regex::new(r#"href=\"([a-z0-9][a-z0-9-]+)/\""#)?;
-    let mut names: Vec<String> = dir_re
-        .captures_iter(&html)
-        .map(|cap| cap[1].to_string())
-        .collect();
+    let mut names: Vec<String> = dir_re.captures_iter(&html).map(|cap| cap[1].to_string()).collect();
 
     names.sort();
     names.dedup();
@@ -49,10 +46,7 @@ pub async fn available_codenames() -> Result<Vec<String>> {
 pub async fn prompt_for_codename() -> Result<String> {
     let dynamic = available_codenames().await.unwrap_or_default();
     let options = if dynamic.is_empty() {
-        DEFAULT_CODENAMES
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
+        DEFAULT_CODENAMES.iter().map(|s| s.to_string()).collect::<Vec<_>>()
     } else {
         dynamic
     };
@@ -84,11 +78,7 @@ fn repository_template() -> Result<(String, String)> {
 
 fn repository_root() -> Result<String> {
     let (prefix, _) = repository_template()?;
-    Ok(if prefix.ends_with('/') {
-        prefix
-    } else {
-        format!("{prefix}/")
-    })
+    Ok(if prefix.ends_with('/') { prefix } else { format!("{prefix}/") })
 }
 
 fn repository_urls(codename: &str) -> Result<DebianRepoUrls> {
@@ -111,10 +101,7 @@ fn repository_urls(codename: &str) -> Result<DebianRepoUrls> {
         format!("{listing_root}/")
     };
 
-    Ok(DebianRepoUrls {
-        latest,
-        listing_root,
-    })
+    Ok(DebianRepoUrls { latest, listing_root })
 }
 
 pub async fn pick_debian(codename: &str) -> Result<Image> {
@@ -126,44 +113,26 @@ pub async fn pick_debian(codename: &str) -> Result<Image> {
         .await
         .with_context(|| format!("fetch debian images for codename='{codename}' arch='{arch}'"))?;
 
-    ensure!(
-        !images.is_empty(),
-        "No Debian images found for codename={codename} arch={arch}"
-    );
+    ensure!(!images.is_empty(), "No Debian images found for codename={codename} arch={arch}");
 
     // 3) Distro major version (e.g., "12", "13")
-    let mut distro_versions = images
-        .iter()
-        .map(|i| i.distro_version().to_string())
-        .collect::<Vec<_>>();
+    let mut distro_versions = images.iter().map(|i| i.distro_version().to_string()).collect::<Vec<_>>();
     distro_versions.sort();
     distro_versions.reverse();
     distro_versions.dedup();
 
     let distro_version = choose_one("Select Distro Version", distro_versions)?;
-    images = images
-        .into_iter()
-        .filter(|i| i.distro_version() == distro_version)
-        .collect();
-    ensure!(
-        !images.is_empty(),
-        "No Debian images found for distro_version={distro_version}"
-    );
+    images = images.into_iter().filter(|i| i.distro_version() == distro_version).collect();
+    ensure!(!images.is_empty(), "No Debian images found for distro_version={distro_version}");
 
     // 4) Image version / build (e.g., point release or date-stamped build)
-    let mut image_versions: Vec<String> = images
-        .iter()
-        .map(|i| i.version().to_string())
-        .collect::<Vec<_>>();
+    let mut image_versions: Vec<String> = images.iter().map(|i| i.version().to_string()).collect::<Vec<_>>();
     image_versions.sort();
     image_versions.reverse();
     image_versions.dedup();
 
     let image_version = choose_one("Select Image Version", image_versions)?;
-    images = images
-        .into_iter()
-        .filter(|i| i.version() == image_version)
-        .collect();
+    images = images.into_iter().filter(|i| i.version() == image_version).collect();
     ensure!(
         !images.is_empty(),
         "No Debian images for distro_version={distro_version} and version={image_version}"
@@ -175,30 +144,15 @@ pub async fn pick_debian(codename: &str) -> Result<Image> {
     image_types.dedup();
 
     let image_type = choose_one("Select image type (variant)", image_types)?;
-    images = images
-        .into_iter()
-        .filter(|i| i.image_type() == image_type)
-        .collect();
+    images = images.into_iter().filter(|i| i.image_type() == image_type).collect();
     ensure!(
         !images.is_empty(),
         "No Debian images found for distro_version={distro_version}, version={image_version}, type={image_type}"
     );
 
     // 6) If multiple artifacts remain (qcow2/raw), let user pick the exact one
-    let labelize = |i: &Image| {
-        format!(
-            "{} | {} | {} | {} | {}",
-            i.name(),
-            i.image_type(),
-            i.version(),
-            i.arch(),
-            i.url()
-        )
-    };
-    let chosen_label = choose_one(
-        "Select Image Artifact",
-        images.iter().map(|i| labelize(i)).collect(),
-    )?;
+    let labelize = |i: &Image| format!("{} | {} | {} | {} | {}", i.name(), i.image_type(), i.version(), i.arch(), i.url());
+    let chosen_label = choose_one("Select Image Artifact", images.iter().map(|i| labelize(i)).collect())?;
 
     let idx = images
         .iter()
@@ -258,10 +212,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         .with_context(|| format!("fetch directory listing: {base}"))?;
 
     let dir_re = Regex::new(r#"href="((?:latest|\d{8}-\d{4}))/""#)?;
-    let mut dirs: Vec<String> = dir_re
-        .captures_iter(&index_html)
-        .map(|c| c[1].to_string())
-        .collect();
+    let mut dirs: Vec<String> = dir_re.captures_iter(&index_html).map(|c| c[1].to_string()).collect();
 
     // Dedup + keep latest first for nice UX (latest, then most recent builds)
     dirs.sort();
@@ -319,9 +270,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
                 let filename = c.name("file").unwrap().as_str().to_string();
                 let distro_version = c.name("dver").unwrap().as_str().to_string();
                 let variant = c.name("variant").unwrap().as_str().to_string();
-                let checksum = c
-                    .name("sha")
-                    .map(|cap| ImageChecksum::new(ChecksumKind::Sha256, cap.as_str()));
+                let checksum = c.name("sha").map(|cap| ImageChecksum::new(ChecksumKind::Sha256, cap.as_str()));
 
                 // You can choose to filter by ext here if you only want qcow2:
                 // let ext = c.name("ext").unwrap().as_str();
@@ -331,83 +280,10 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
 
                 // "version" in your picker is the build dir (e.g., "latest" or "20241013-1744")
                 // "image_type" is the Debian variant (e.g., "genericcloud", "nocloud")
-                out.push(make_image(
-                    codename,
-                    url,
-                    want_arch.clone(),
-                    variant,
-                    d.clone(),
-                    distro_version,
-                    checksum,
-                ));
+                out.push(make_image(codename, url, want_arch.clone(), variant, d.clone(), distro_version, checksum));
             }
         }
     }
 
     Ok(out)
-}
-
-#[async_trait::async_trait]
-impl Provider for DebianProvider {
-    async fn resolve(&self, r: &ImageRequest, client: &Client) -> anyhow::Result<ImageAsset> {
-        let repo_urls = repository_urls(&r.codename_or_major)?;
-        let base = repo_urls.latest;
-
-        let sums_url = format!("{base}SHA512SUMS");
-        let sums = client
-            .get(&sums_url)
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
-            .await?;
-
-        // Example names: debian-12-genericcloud-amd64.qcow2 | debian-12-nocloud-amd64.qcow2
-        let name_re = Regex::new(&format!(
-            r"(debian-\d+-{}-{}\.{})",
-            regex::escape(&r.variant.to_lowercase()),
-            if r.arch == "x86_64" { "amd64" } else { &r.arch },
-            regex::escape(&r.format)
-        ))?;
-
-        // Parse "SHA512SUMS": "abc123...  filename"
-        for line in sums.lines() {
-            if let Some(mat) = name_re.captures(line) {
-                let filename = mat.get(1).unwrap().as_str().to_string();
-                let sha = line.split_whitespace().next().unwrap().to_string();
-                return Ok(ImageAsset {
-                    url: format!("{base}{filename}"),
-                    sha512: sha,
-                    filename,
-                });
-            }
-        }
-        anyhow::bail!("No matching Debian image for filters");
-    }
-}
-
-// Download + verify
-pub async fn download_and_verify(
-    client: &Client,
-    asset: &ImageAsset,
-    out_path: &std::path::Path,
-) -> anyhow::Result<()> {
-    let bytes = client
-        .get(&asset.url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
-    let mut hasher = Sha512::new();
-    hasher.update(&bytes);
-    let got = hex::encode(hasher.finalize());
-    let expected = asset.sha512.trim().to_lowercase();
-    if got != expected {
-        anyhow::bail!("SHA512 mismatch: expected {}, got {}", asset.sha512, got);
-    }
-
-    write(out_path, &bytes).unwrap();
-
-    Ok(())
 }
