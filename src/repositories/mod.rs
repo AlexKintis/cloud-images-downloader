@@ -1,4 +1,6 @@
+pub mod debian;
 mod models;
+pub mod ubuntu;
 
 use std::{fs, path::Path, sync::OnceLock};
 
