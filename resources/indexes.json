@@ -1,0 +1,16 @@
+[
+  { 
+    "name": "ubuntu", 
+    "url": "https://cloud-images.ubuntu.com/{}/streams/v1/com.ubuntu.cloud:released:download.json",
+    "parameters": {
+      "base_for_paths": "https://cloud-images.ubuntu.com/{}/",
+      "tracking_": "releases"
+    }
+  },
+  {
+      "name": "debian", 
+      "url": "https://cloud.debian.org/images/cloud/{}/latest/",
+      "parameters": {
+      }
+  }
+]
