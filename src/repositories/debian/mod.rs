@@ -245,7 +245,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
     //   <sha256>  debian-12-genericcloud-amd64.qcow2
     //
     let line_re = Regex::new(
-        r#"(?i)^(?P<sha>[a-f0-9]{64})\s+\*?(?P<file>debian-(?P<dver>\d+)-(?P<variant>[a-z0-9]+)-(?P<arch>amd64|arm64)\.(?P<ext>qcow2|raw))$"#,
+        r#"(?i)^(?P<sha>(?:[a-f0-9]{64}|[a-f0-9]{128}))\s+\*?(?P<file>debian-(?P<dver>\d+)-(?P<variant>[a-z0-9]+)-(?P<arch>amd64|arm64)\.(?P<ext>qcow2|raw))$"#,
     )?;
 
     let mut out = Vec::new();
