@@ -10,6 +10,8 @@ use repositories::{self as repos, almalinux, debian, ubuntu};
 
 use cloud::Image;
 
+/// Resolve the absolute path to the bundled `indexes.json` file that contains
+/// the repository metadata used by the pickers.
 fn construct_properties_file_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources")
@@ -38,6 +40,12 @@ fn print_selection(distro: &str, arch: &str, version: &str, image: &Image) {
 }
 
 /// Full 3-step wizard: distro -> arch -> version -> image
+/// Ask the user to progressively narrow down their choice and return the final
+/// image selection.
+///
+/// The function keeps the prompts generic so they can be reused for the
+/// different distros supported by the tool while still returning a uniform
+/// structure that the caller can work with.
 async fn prompt_and_select(track: &str) -> Result<(String, String, String, Image)> {
     // 0) Distro
     let distro = choose_one("Select Distro", vec!["Ubuntu", "Debian", "AlmaLinux"])?;

@@ -1,6 +1,7 @@
 use reqwest::Url;
 use std::fmt;
 
+/// Supported checksum algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChecksumKind {
     Sha256,
@@ -22,6 +23,7 @@ impl fmt::Display for ChecksumKind {
     }
 }
 
+/// Convenience wrapper that couples the checksum value with its algorithm.
 #[derive(Debug, Clone)]
 pub struct ImageChecksum {
     kind: ChecksumKind,
@@ -45,6 +47,8 @@ impl ImageChecksum {
     }
 }
 
+/// Normalised representation of a cloud image, regardless of the upstream
+/// repository format.
 #[derive(Debug, Clone)]
 pub struct Image {
     os: String,
@@ -154,6 +158,10 @@ impl Image {
         sha256: Option<String>,
         image_type: String,
     ) -> Self {
+        // Simplestreams metadata may expose multiple checksum types, but the
+        // JSON files we consume currently only provide SHA256 values. Wrap the
+        // optional string into the strongly typed helper so callers can
+        // distinguish the hashing algorithm when more become available.
         let checksum = sha256.map(|value| ImageChecksum::new(ChecksumKind::Sha256, value));
 
         // Try to build an absolute URL, fallback to string concatenation

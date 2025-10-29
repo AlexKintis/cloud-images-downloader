@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Metadata for a Simplestreams "product" which groups all artifacts for a
+/// specific release.
 #[derive(Serialize, Debug, Deserialize)]
 pub struct Product {
     #[serde(default)]

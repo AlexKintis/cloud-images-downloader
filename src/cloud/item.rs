@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+/// Lowest-level Simplestreams entry that represents a single artifact on disk.
 #[derive(Debug, Deserialize)]
 pub struct Item {
     #[serde(default)]

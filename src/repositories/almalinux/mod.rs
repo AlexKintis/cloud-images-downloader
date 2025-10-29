@@ -12,6 +12,7 @@ use crate::repositories;
 const DEFAULT_MAJORS: &[&str] = &["9", "8"];
 const CHECKSUM_FILENAME: &str = "CHECKSUM";
 
+/// Lazily build the regex that parses lines from the `CHECKSUM` file.
 fn checksum_line_regex() -> &'static Regex {
     static LINE_RE: OnceLock<Regex> = OnceLock::new();
     LINE_RE.get_or_init(|| {
@@ -20,6 +21,7 @@ fn checksum_line_regex() -> &'static Regex {
     })
 }
 
+/// Lazily build the regex that extracts metadata from artifact filenames.
 fn filename_regex() -> &'static Regex {
     static FILE_RE: OnceLock<Regex> = OnceLock::new();
     FILE_RE.get_or_init(|| {
@@ -41,6 +43,8 @@ struct AlmaArtifact {
     format: String,
 }
 
+/// Split the version fragment provided in the filename into the distro version
+/// and the build identifier.
 fn split_version_parts(version_fragment: &str, major: &str) -> (String, String) {
     if version_fragment.eq_ignore_ascii_case("latest") {
         return (major.to_string(), "latest".to_string());
@@ -57,6 +61,9 @@ fn split_version_parts(version_fragment: &str, major: &str) -> (String, String) 
     (major.to_string(), version_fragment.to_string())
 }
 
+/// Parse an AlmaLinux artifact filename and convert it into a structured
+/// representation. The function filters out files for other architectures and
+/// auxiliary artifacts (e.g. checksum files).
 fn parse_artifact_filename(filename: &str, expected_arch: &str) -> Option<AlmaArtifact> {
     let caps = filename_regex().captures(filename)?;
 
@@ -87,12 +94,16 @@ fn parse_artifact_filename(filename: &str, expected_arch: &str) -> Option<AlmaAr
     })
 }
 
+/// Return the configured AlmaLinux repository definition or bubble up a
+/// descriptive error when it is missing.
 fn repository_config() -> Result<&'static repositories::Repository> {
     repositories::by_name("almalinux")
         .map_err(anyhow::Error::new)?
         .context("repository 'almalinux' is not configured")
 }
 
+/// Construct the base URL used to fetch artifacts for a specific major release
+/// and architecture.
 fn repository_base_url(major: &str, arch: &str) -> Result<String> {
     let repo = repository_config()?;
     let template = repo.url();
@@ -112,6 +123,7 @@ fn repository_base_url(major: &str, arch: &str) -> Result<String> {
     })
 }
 
+/// Compute the root URL that lists all available major versions.
 fn majors_root_url() -> Result<String> {
     let repo = repository_config()?;
     if let Some(params) = repo.other_parameters() {
@@ -128,6 +140,8 @@ fn majors_root_url() -> Result<String> {
     bail!("unable to determine AlmaLinux majors root from repository config")
 }
 
+/// Scrape the upstream directory listing to discover the major versions that
+/// currently expose cloud images.
 async fn fetch_major_versions() -> Result<Vec<String>> {
     let root = majors_root_url()?;
     let client = Client::new();
@@ -154,6 +168,8 @@ async fn fetch_major_versions() -> Result<Vec<String>> {
     Ok(majors)
 }
 
+/// Return the list of major versions, defaulting to a curated set when the
+/// remote lookup fails.
 pub async fn available_majors() -> Result<Vec<String>> {
     match fetch_major_versions().await {
         Ok(list) if !list.is_empty() => Ok(list),
@@ -161,6 +177,8 @@ pub async fn available_majors() -> Result<Vec<String>> {
     }
 }
 
+/// Convert a parsed `AlmaArtifact` into the shared `Image` structure used by
+/// the higher level code.
 fn make_image(base_url: &str, artifact: AlmaArtifact, checksum: ImageChecksum) -> Image {
     let url = format!("{base_url}{}", artifact.filename);
     Image::from_parts(
@@ -175,6 +193,8 @@ fn make_image(base_url: &str, artifact: AlmaArtifact, checksum: ImageChecksum) -
     )
 }
 
+/// Enumerate all AlmaLinux cloud images available for the specified major
+/// version and architecture by parsing the upstream `CHECKSUM` manifest.
 pub async fn almalinux_list(major: &str, arch: &str) -> Result<Vec<Image>> {
     let base = repository_base_url(major, arch)?;
     let checksum_url = format!("{base}{CHECKSUM_FILENAME}");
@@ -220,6 +240,8 @@ pub async fn almalinux_list(major: &str, arch: &str) -> Result<Vec<Image>> {
     Ok(images)
 }
 
+/// Multi-step AlmaLinux picker mirroring the flow implemented for Ubuntu and
+/// Debian.
 pub async fn pick_almalinux(_track: &str) -> Result<Image> {
     let arch = choose_one("Select Architecture", arch_options_for("AlmaLinux"))?;
 
