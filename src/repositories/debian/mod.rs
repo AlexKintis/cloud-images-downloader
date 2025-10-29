@@ -5,6 +5,7 @@ use anyhow::{Context, Result, anyhow, ensure};
 use regex::Regex;
 use reqwest::Client;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
 use crate::cloud::{ChecksumKind, Image, ImageChecksum};
 use crate::helpers::{arch_options_for, choose_one};
@@ -332,28 +333,35 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         .await
         .with_context(|| format!("fetch directory listing: {base}"))?;
 
-    let dir_re = Regex::new(r#"href="((?:latest|\d{8}(?:-\d{4})?))/""#)?;
-    let mut dirs: Vec<String> = dir_re
-        .captures_iter(&index_html)
-        .map(|c| c[1].to_string())
-        .collect();
+    let href_re = Regex::new(r#"href=\"([^\"/]+)/\""#)?;
+    let valid_dir_re = Regex::new(r"^(?:latest|\d{8}(?:-\d{4})?)$")?;
+    let mut seen = HashSet::new();
+    let mut dated_dirs: Vec<String> = Vec::new();
+    let mut include_latest = false;
 
-    // Dedup + keep latest first for nice UX (latest, then most recent builds)
-    dirs.sort();
-    dirs.dedup();
-    // Move "latest" to front if present
-    if let Some(pos) = dirs.iter().position(|d| d == "latest") {
-        let latest = dirs.remove(pos);
-        dirs.insert(0, latest);
+    for cap in href_re.captures_iter(&index_html) {
+        let dir = cap[1].to_string();
+        if !valid_dir_re.is_match(&dir) {
+            continue;
+        }
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        if dir == "latest" {
+            include_latest = true;
+        } else {
+            dated_dirs.push(dir);
+        }
     }
-    // Reverse to have newest date dirs first (after "latest")
-    // (If "latest" exists, it's already at index 0.)
-    if dirs.len() > 1 {
-        let (head, tail) = dirs.split_at_mut(1);
-        tail.reverse();
-        // head (latest) + reversed tail
-        dirs = head.iter().cloned().chain(tail.iter().cloned()).collect();
+
+    dated_dirs.sort();
+    dated_dirs.reverse();
+
+    let mut dirs = Vec::new();
+    if include_latest {
+        dirs.push("latest".to_string());
     }
+    dirs.extend(dated_dirs);
 
     // 2) For each subdir, read SHA512SUMS and parse artifacts
     // Filenames look like:
