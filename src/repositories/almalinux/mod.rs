@@ -16,7 +16,7 @@ const CHECKSUM_FILENAME: &str = "CHECKSUM";
 fn checksum_line_regex() -> &'static Regex {
     static LINE_RE: OnceLock<Regex> = OnceLock::new();
     LINE_RE.get_or_init(|| {
-        Regex::new(r"^SHA256 \((?P<file>AlmaLinux-[^)]+)\) = (?P<sha>[A-Fa-f0-9]{64})$")
+        Regex::new(r"^(?P<sha>[A-Fa-f0-9]{64})\s{2}(?P<file>AlmaLinux-[^\s]+)$")
             .expect("invalid AlmaLinux checksum line regex")
     })
 }
@@ -210,6 +210,7 @@ pub async fn almalinux_list(major: &str, arch: &str) -> Result<Vec<Image>> {
         .with_context(|| format!("fetch AlmaLinux checksum list from {checksum_url}"))?;
 
     let mut images = Vec::new();
+
     for line in checksum_body.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
