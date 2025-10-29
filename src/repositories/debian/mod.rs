@@ -5,12 +5,29 @@ use anyhow::{Context, Result, anyhow, ensure};
 use regex::Regex;
 use reqwest::Client;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
 use crate::cloud::{ChecksumKind, Image, ImageChecksum};
 use crate::helpers::{arch_options_for, choose_one};
 use crate::repositories;
 
 const DEFAULT_CODENAMES: &[&str] = &["stable", "bookworm", "trixie"];
+
+const DEBIAN_SHA512_LINE_PATTERN: &str = r#"(?xi)
+    ^
+    (?P<sha>[a-f0-9]{64}|[a-f0-9]{128})
+    \s+\*?
+    (?P<file>
+        debian-
+        (?P<dver>\d+)-
+        (?P<variant>[a-z0-9+]+(?:-[a-z0-9+]+)*)-
+        (?P<arch>amd64|arm64)
+        (?:-(?P<build>\d{8}-\d{4}))?
+        \.
+        (?P<ext>qcow2|raw)
+    )
+    $
+"#;
 
 pub fn codename_options() -> Vec<&'static str> {
     DEFAULT_CODENAMES.to_vec()
@@ -332,28 +349,35 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         .await
         .with_context(|| format!("fetch directory listing: {base}"))?;
 
-    let dir_re = Regex::new(r#"href="((?:latest|\d{8}(?:-\d{4})?))/""#)?;
-    let mut dirs: Vec<String> = dir_re
-        .captures_iter(&index_html)
-        .map(|c| c[1].to_string())
-        .collect();
+    let href_re = Regex::new(r#"href=\"([^\"/]+)/\""#)?;
+    let valid_dir_re = Regex::new(r"^(?:latest|\d{8}(?:-\d{4})?)$")?;
+    let mut seen = HashSet::new();
+    let mut dated_dirs: Vec<String> = Vec::new();
+    let mut include_latest = false;
 
-    // Dedup + keep latest first for nice UX (latest, then most recent builds)
-    dirs.sort();
-    dirs.dedup();
-    // Move "latest" to front if present
-    if let Some(pos) = dirs.iter().position(|d| d == "latest") {
-        let latest = dirs.remove(pos);
-        dirs.insert(0, latest);
+    for cap in href_re.captures_iter(&index_html) {
+        let dir = cap[1].to_string();
+        if !valid_dir_re.is_match(&dir) {
+            continue;
+        }
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        if dir == "latest" {
+            include_latest = true;
+        } else {
+            dated_dirs.push(dir);
+        }
     }
-    // Reverse to have newest date dirs first (after "latest")
-    // (If "latest" exists, it's already at index 0.)
-    if dirs.len() > 1 {
-        let (head, tail) = dirs.split_at_mut(1);
-        tail.reverse();
-        // head (latest) + reversed tail
-        dirs = head.iter().cloned().chain(tail.iter().cloned()).collect();
+
+    dated_dirs.sort();
+    dated_dirs.reverse();
+
+    let mut dirs = Vec::new();
+    if include_latest {
+        dirs.push("latest".to_string());
     }
+    dirs.extend(dated_dirs);
 
     // 2) For each subdir, read SHA512SUMS and parse artifacts
     // Filenames look like:
@@ -368,9 +392,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
     // SHA512SUMS lines are typically:
     //   <sha256>  debian-12-genericcloud-amd64.qcow2
     //
-    let line_re = Regex::new(
-        r#"(?i)^(?P<sha>(?:[a-f0-9]{64}|[a-f0-9]{128}))\s+\*?(?P<file>debian-(?P<dver>\d+)-(?P<variant>[a-z0-9]+)-(?P<arch>amd64|arm64)\.(?P<ext>qcow2|raw))$"#,
-    )?;
+    let line_re = Regex::new(DEBIAN_SHA512_LINE_PATTERN)?;
 
     let mut out = Vec::new();
 
@@ -420,4 +442,65 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEBIAN_SHA512_LINE_PATTERN;
+    use regex::Regex;
+
+    fn regex() -> Regex {
+        Regex::new(DEBIAN_SHA512_LINE_PATTERN).expect("invalid debian sha512 regex")
+    }
+
+    #[test]
+    fn matches_latest_style_filename() {
+        let sha = "a".repeat(128);
+        let line = format!("{sha}  debian-12-genericcloud-amd64.qcow2");
+
+        let caps = regex()
+            .captures(&line)
+            .expect("should match simple genericcloud artifact");
+
+        assert_eq!(caps.name("dver").unwrap().as_str(), "12");
+        assert_eq!(caps.name("variant").unwrap().as_str(), "genericcloud");
+        assert_eq!(caps.name("arch").unwrap().as_str(), "amd64");
+        assert_eq!(caps.name("ext").unwrap().as_str(), "qcow2");
+        assert_eq!(
+            caps.name("file").unwrap().as_str(),
+            "debian-12-genericcloud-amd64.qcow2"
+        );
+        assert!(caps.name("build").is_none());
+    }
+
+    #[test]
+    fn matches_timestamped_filename() {
+        let sha = "b".repeat(64);
+        let line = format!("{sha}  debian-12-genericcloud-arm64-20241013-1744.raw");
+
+        let caps = regex()
+            .captures(&line)
+            .expect("should match timestamped genericcloud artifact");
+
+        assert_eq!(caps.name("dver").unwrap().as_str(), "12");
+        assert_eq!(caps.name("variant").unwrap().as_str(), "genericcloud");
+        assert_eq!(caps.name("arch").unwrap().as_str(), "arm64");
+        assert_eq!(caps.name("ext").unwrap().as_str(), "raw");
+        assert_eq!(caps.name("build").unwrap().as_str(), "20241013-1744");
+    }
+
+    #[test]
+    fn matches_variant_with_plus_suffix() {
+        let sha = "c".repeat(64);
+        let line = format!("{sha}  debian-12-nocloud+nonfree-amd64-20240930-1200.qcow2");
+
+        let caps = regex()
+            .captures(&line)
+            .expect("should match nocloud+nonfree artifact");
+
+        assert_eq!(caps.name("variant").unwrap().as_str(), "nocloud+nonfree");
+        assert_eq!(caps.name("arch").unwrap().as_str(), "amd64");
+        assert_eq!(caps.name("ext").unwrap().as_str(), "qcow2");
+        assert_eq!(caps.name("build").unwrap().as_str(), "20240930-1200");
+    }
 }
