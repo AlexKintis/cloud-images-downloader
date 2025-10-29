@@ -8,10 +8,17 @@
     }
   },
   {
-      "name": "debian", 
+      "name": "debian",
       "url": "https://cloud.debian.org/images/cloud/{}/latest/",
       "parameters": {
           "index": "https://cloud.debian.org/images/cloud/"
+      }
+  },
+  {
+      "name": "almalinux",
+      "url": "https://repo.almalinux.org/almalinux/{}/cloud/{}/images/",
+      "parameters": {
+          "majors_root": "https://repo.almalinux.org/almalinux/"
       }
   }
 ]

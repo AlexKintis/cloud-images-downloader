@@ -1,13 +1,12 @@
 mod cloud;
 mod helpers;
 mod repositories;
-// TODO(almalinux): add `mod almalinux;` once almalinux_list(...) is implemented
 
 use anyhow::{Result, bail};
 use std::{env, path::PathBuf};
 
 use helpers::{choose_one, image_resolver::download_file};
-use repositories::{self as repos, debian, ubuntu};
+use repositories::{self as repos, almalinux, debian, ubuntu};
 
 use cloud::Image;
 
@@ -38,11 +37,6 @@ fn print_selection(distro: &str, arch: &str, version: &str, image: &Image) {
     }
 }
 
-async fn pick_almalinux(_track: &str) -> Result<Image> {
-    // TODO(almalinux): implement almalinux_list(track, arch, only_disk_images)
-    bail!("AlmaLinux picker not yet implemented (TODO).")
-}
-
 /// Full 3-step wizard: distro -> arch -> version -> image
 async fn prompt_and_select(track: &str) -> Result<(String, String, String, Image)> {
     // 0) Distro
@@ -63,7 +57,7 @@ async fn prompt_and_select(track: &str) -> Result<(String, String, String, Image
             Ok((distro, arch, version, img))
         }
         "AlmaLinux" => {
-            let img = pick_almalinux(track).await?;
+            let img = almalinux::pick_almalinux(track).await?;
             let arch = img.arch().to_string();
             let version = img.version().to_string();
             Ok((distro, arch, version, img))
