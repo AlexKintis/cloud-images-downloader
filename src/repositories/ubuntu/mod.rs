@@ -9,6 +9,8 @@ use reqwest::Client;
 use std::fs;
 use std::io::Write;
 
+/// Build a human readable label for the picker so users can distinguish very
+/// similar images at a glance.
 fn format_image_label(image: &Image) -> String {
     format!("{} | {} | {}", image.name(), image.arch(), image.url())
 }
@@ -86,6 +88,8 @@ pub async fn pick_ubuntu(track: &str) -> Result<Image> {
 
 /// Download the JSON at `url` into `dest_path` inside the temp folder.
 /// Returns the full path of the saved file.
+/// Download the remote Simplestreams document into a deterministic location so
+/// future runs can reuse the cached copy.
 async fn fetch_repo_json_file_to_tmp(url: &str, dest_path: &Path) -> Result<PathBuf> {
     let client = Client::builder().build()?;
 
@@ -162,6 +166,10 @@ async fn construct_repo_catalogue<T: for<'de> serde::Deserialize<'de>>(url: &str
 }
 
 /// Construct the repository url which contains the '{}' delimiter
+///
+/// The upstream configuration stores a template with placeholders for the
+/// requested track (e.g. `releases` or `daily`). This helper replaces the first
+/// placeholder while leaving the rest untouched for downstream consumers.
 fn construct_repo_url(track: &str) -> String {
     let catalog_url: String = repositories::by_name("ubuntu")
         .unwrap_or_else(|err| panic!("{err}"))

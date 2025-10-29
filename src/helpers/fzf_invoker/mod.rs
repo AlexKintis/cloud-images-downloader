@@ -1,6 +1,10 @@
 use std::fmt::Display;
 use termenu::{Item, Menu};
 
+/// Small adapter around `termenu` that mimics the behaviour of the `fzf`
+/// command line tool. Using our own wrapper keeps the rest of the code base
+/// unaware of the third-party API and makes it easier to swap implementations
+/// in the future.
 pub struct FzfInvoker<T> {
     msg: String,
     items: Vec<T>,
@@ -11,6 +15,7 @@ impl<T> FzfInvoker<T>
 where
     T: Display + Clone,
 {
+    /// Store the prompt message and candidate items.
     pub fn new(msg: String, items: Vec<T>) -> Self {
         Self { msg, items }
     }

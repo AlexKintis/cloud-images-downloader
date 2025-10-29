@@ -29,10 +29,15 @@ const DEBIAN_SHA512_LINE_PATTERN: &str = r#"(?xi)
     $
 "#;
 
+/// Fallback list of codenames used when the remote repository cannot be
+/// queried.
 pub fn codename_options() -> Vec<&'static str> {
     DEFAULT_CODENAMES.to_vec()
 }
 
+/// Attempt to scrape the Debian cloud image directory to discover available
+/// codenames. The function falls back to a static list when the remote is
+/// unreachable or empty.
 pub async fn available_codenames() -> Result<Vec<String>> {
     let client = Client::new();
     let root = repository_root()?;
@@ -69,6 +74,8 @@ struct CodenameOption {
     major_version: Option<String>,
 }
 
+/// Build the interactive codename list enriched with detected major versions
+/// so the picker can display more context to the user.
 async fn codename_options_with_versions() -> Result<Vec<CodenameOption>> {
     let dynamic = available_codenames().await.unwrap_or_default();
     let base = if dynamic.is_empty() {
@@ -110,6 +117,8 @@ async fn codename_options_with_versions() -> Result<Vec<CodenameOption>> {
     Ok(options)
 }
 
+/// Inspect the SHA512 sums file for a codename and try to extract the Debian
+/// major version. Returns `None` when the information is not present.
 async fn detect_major_version(client: &Client, codename: &str) -> Option<String> {
     let repo_urls = repository_urls(codename).ok()?;
     let sums_url = format!("{}SHA512SUMS", repo_urls.latest);
@@ -123,6 +132,8 @@ async fn detect_major_version(client: &Client, codename: &str) -> Option<String>
         .and_then(|caps| caps.name("major").map(|m| m.as_str().to_string()))
 }
 
+/// Present the list of Debian codenames to the user and return both the chosen
+/// codename and the detected major version (if available).
 pub async fn prompt_for_codename() -> Result<(String, Option<String>)> {
     let options = codename_options_with_versions().await?;
     ensure!(!options.is_empty(), "No Debian codenames available");
@@ -149,6 +160,8 @@ struct DebianRepoUrls {
     listing_root: String,
 }
 
+/// Split the configured repository URL into the static prefix and suffix parts
+/// surrounding the `"{}"` placeholder used to inject the codename.
 fn repository_template() -> Result<(String, String)> {
     let repo = repositories::by_name("debian")
         .map_err(anyhow::Error::new)?
@@ -160,6 +173,8 @@ fn repository_template() -> Result<(String, String)> {
         .ok_or_else(|| anyhow!("repository URL for debian must contain '{{}}' placeholder"))
 }
 
+/// Return the absolute base URL used to discover available directories for a
+/// given codename.
 fn repository_root() -> Result<String> {
     let (prefix, _) = repository_template()?;
     Ok(if prefix.ends_with('/') {
@@ -169,6 +184,8 @@ fn repository_root() -> Result<String> {
     })
 }
 
+/// Construct the URLs required to browse and download the Debian artifacts for
+/// the provided codename.
 fn repository_urls(codename: &str) -> Result<DebianRepoUrls> {
     let (prefix, suffix) = repository_template()?;
 
@@ -195,6 +212,8 @@ fn repository_urls(codename: &str) -> Result<DebianRepoUrls> {
     })
 }
 
+/// Interactive Debian picker that optionally reuses a detected major version
+/// hint to skip one of the prompts.
 pub async fn pick_debian_with_hint(
     codename: &str,
     distro_version_hint: Option<&str>,
@@ -300,6 +319,8 @@ pub async fn pick_debian(codename: &str) -> Result<Image> {
     pick_debian_with_hint(codename, None).await
 }
 
+/// Helper that keeps the mapping between parsed metadata and the generic
+/// `Image` structure in one place.
 fn make_image(
     codename: &str,
     url: String,
