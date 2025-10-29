@@ -4,6 +4,7 @@ pub use models::{DebianProvider, ImageAsset, ImageRequest, Provider};
 use anyhow::{Context, Result, anyhow, ensure};
 use regex::Regex;
 use reqwest::Client;
+use std::cmp::Ordering;
 
 use crate::cloud::{ChecksumKind, Image, ImageChecksum};
 use crate::helpers::{arch_options_for, choose_one};
@@ -48,6 +49,7 @@ pub async fn available_codenames() -> Result<Vec<String>> {
 struct CodenameOption {
     codename: String,
     label: String,
+    major_version: Option<String>,
 }
 
 async fn codename_options_with_versions() -> Result<Vec<CodenameOption>> {
@@ -65,13 +67,28 @@ async fn codename_options_with_versions() -> Result<Vec<CodenameOption>> {
     let mut options = Vec::new();
 
     for codename in base {
-        let label = match detect_major_version(&client, &codename).await {
-            Some(major) => format!("{codename} (Debian {major})"),
+        let major_version = detect_major_version(&client, &codename).await;
+        let label = match &major_version {
+            Some(major) => format!("{major} ({codename})"),
             None => codename.clone(),
         };
 
-        options.push(CodenameOption { codename, label });
+        options.push(CodenameOption {
+            codename,
+            label,
+            major_version,
+        });
     }
+
+    options.sort_by(|a, b| match (&a.major_version, &b.major_version) {
+        (Some(ma), Some(mb)) => match (ma.parse::<u32>(), mb.parse::<u32>()) {
+            (Ok(va), Ok(vb)) => vb.cmp(&va),
+            _ => mb.cmp(ma),
+        },
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => a.codename.cmp(&b.codename),
+    });
 
     Ok(options)
 }
@@ -89,24 +106,24 @@ async fn detect_major_version(client: &Client, codename: &str) -> Option<String>
         .and_then(|caps| caps.name("major").map(|m| m.as_str().to_string()))
 }
 
-pub async fn prompt_for_codename() -> Result<String> {
+pub async fn prompt_for_codename() -> Result<(String, Option<String>)> {
     let options = codename_options_with_versions().await?;
     ensure!(!options.is_empty(), "No Debian codenames available");
 
     let labels = options.iter().map(|opt| opt.label.clone()).collect();
     let choice = choose_one("Select Debian Codename", labels)?;
 
-    let idx = options
-        .iter()
-        .position(|opt| opt.label == choice)
+    let selected = options
+        .into_iter()
+        .find(|opt| opt.label == choice)
         .expect("chosen label must map to a codename");
 
-    Ok(options[idx].codename.clone())
+    Ok((selected.codename, selected.major_version))
 }
 
 pub async fn pick_debian_interactive() -> Result<(String, Image)> {
-    let codename = prompt_for_codename().await?;
-    let image = pick_debian(&codename).await?;
+    let (codename, major_version) = prompt_for_codename().await?;
+    let image = pick_debian_with_hint(&codename, major_version.as_deref()).await?;
     Ok((codename, image))
 }
 
@@ -161,7 +178,10 @@ fn repository_urls(codename: &str) -> Result<DebianRepoUrls> {
     })
 }
 
-pub async fn pick_debian(codename: &str) -> Result<Image> {
+pub async fn pick_debian_with_hint(
+    codename: &str,
+    distro_version_hint: Option<&str>,
+) -> Result<Image> {
     // 1) Arch (use your existing helper; ensure it includes amd64/arm64 at least)
     let arch = choose_one("Select Architecture", arch_options_for("Debian"))?;
 
@@ -176,23 +196,30 @@ pub async fn pick_debian(codename: &str) -> Result<Image> {
     );
 
     // 3) Distro major version (e.g., "12", "13")
-    let mut distro_versions = images
-        .iter()
-        .map(|i| i.distro_version().to_string())
-        .collect::<Vec<_>>();
-    distro_versions.sort();
-    distro_versions.reverse();
-    distro_versions.dedup();
+    let distro_version = if let Some(hint) = distro_version_hint {
+        images.retain(|i| i.distro_version() == hint);
+        ensure!(
+            !images.is_empty(),
+            "No Debian images found for distro_version={hint}"
+        );
+        hint.to_string()
+    } else {
+        let mut distro_versions = images
+            .iter()
+            .map(|i| i.distro_version().to_string())
+            .collect::<Vec<_>>();
+        distro_versions.sort();
+        distro_versions.reverse();
+        distro_versions.dedup();
 
-    let distro_version = choose_one("Select Distro Version", distro_versions)?;
-    images = images
-        .into_iter()
-        .filter(|i| i.distro_version() == distro_version)
-        .collect();
-    ensure!(
-        !images.is_empty(),
-        "No Debian images found for distro_version={distro_version}"
-    );
+        let chosen = choose_one("Select Distro Version", distro_versions)?;
+        images.retain(|i| i.distro_version() == chosen);
+        ensure!(
+            !images.is_empty(),
+            "No Debian images found for distro_version={chosen}"
+        );
+        chosen
+    };
 
     // 4) Image version / build (e.g., point release or date-stamped build)
     let mut image_versions: Vec<String> = images
@@ -252,6 +279,10 @@ pub async fn pick_debian(codename: &str) -> Result<Image> {
     Ok(images[idx].clone())
 }
 
+pub async fn pick_debian(codename: &str) -> Result<Image> {
+    pick_debian_with_hint(codename, None).await
+}
+
 fn make_image(
     codename: &str,
     url: String,
@@ -301,7 +332,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         .await
         .with_context(|| format!("fetch directory listing: {base}"))?;
 
-    let dir_re = Regex::new(r#"href="((?:latest|\d{8}-\d{4}))/""#)?;
+    let dir_re = Regex::new(r#"href="((?:latest|\d{8}(?:-\d{4})?))/""#)?;
     let mut dirs: Vec<String> = dir_re
         .captures_iter(&index_html)
         .map(|c| c[1].to_string())
