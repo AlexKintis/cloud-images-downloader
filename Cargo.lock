@@ -1424,7 +1424,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-get-cloud-images"
+name = "rust-cloud-images-downloader"
 version = "0.1.0"
 dependencies = [
  "anyhow",
