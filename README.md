@@ -1,120 +1,71 @@
-# Download cloud images
+# Cloud Images Downloader
 
-This project is supposed to get cloud images for kvm from the official indexes.
-It should do the following:
+Cloud Images Downloader is a Rust-based terminal utility for discovering and
+fetching cloud-ready virtual machine images directly from the official
+distribution indexes of Ubuntu, Debian, and AlmaLinux. The tool wraps the
+available metadata in a friendly menu-driven workflow so you can search,
+inspect, and download the exact image you need for KVM or other hypervisors
+without leaving the terminal.
 
-1. Get each distro the index.
-2. Pass it into an fzf.
-3. The one that is choosen, download the img or qcow2 img.
+## Features
 
-## Repositories links
+- **Interactive selection** – Navigate distro, architecture, release, and image
+  choices through an `fzf`-style picker powered by [`termenu`](https://crates.io/crates/termenu).
+- **Offline-friendly metadata** – Bundles a curated `resources/indexes.json`
+  file so you can browse the available images even when you are temporarily
+  offline; refresh it whenever you need new releases.
+- **Progress reporting downloads** – Retrieve the selected image with
+  [`reqwest`](https://crates.io/crates/reqwest) while an
+  [`indicatif`](https://crates.io/crates/indicatif) progress bar keeps you up to
+  date on transfer speed and completion.
+- **Extensible architecture** – Repository-specific logic lives in
+  `src/repositories`, making it straightforward to add more distributions or
+  customize selection prompts.
 
-1. [Ubuntu](https://cloud-images.ubuntu.com/releases/streams/v1/index.json)
+## Prerequisites
 
-## Archive
+- [Rust](https://www.rust-lang.org/tools/install) 1.75+ (stable toolchain)
+- Network access to the upstream cloud-image mirrors when downloading
+- A UTF-8 capable terminal (for the interactive menu UI)
 
-**Description**: Serialize struct's instance with serde and print a json.
+## Quick Start
 
-``` rust
-println!("{:?}", serde_json::to_string(&product_metadata).unwrap());
+```bash
+# Clone the repository
+$ git clone https://github.com/<your-org>/cloud-images-downloader.git
+$ cd cloud-images-downloader
+
+# Run the interactive downloader
+$ cargo run
 ```
 
-### Intel
+When the application starts it will guide you through three menus:
 
-#### Working example of downloading qcow2 image for debian
+1. **Distribution** – choose between Ubuntu, Debian, or AlmaLinux.
+2. **Architecture / Version** – narrow down the release track (e.g., `releases`
+   vs. `daily`) and architecture (e.g., `amd64`, `arm64`).
+3. **Image** – inspect the available builds and confirm the one you want.
 
-``` rust
-// Cargo.toml
-// [dependencies]
-// anyhow = "1.0.100"
-// hex = "0.4.3"
-// regex = "1.12.2"
-// reqwest = "0.12.24"
-// sha2 = "0.10.9"
-// thiserror = "2.0.17"
-// tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
+After you confirm the final selection the program prints a summary, downloads
+the image into your current directory, and displays the save path. If you cancel
+any menu the run exits without side effects.
 
-use anyhow::Result;
-use regex::Regex;
-use reqwest::Client;
-use sha2::{Digest, Sha512};
-use std::fs::write;
+## Configuration
 
-#[derive(Debug, Clone)]
-pub struct ImageRequest {
-    pub distro: String,            // "debian" | "almalinux"
-    pub codename_or_major: String, // e.g., "bookworm" or "9"
-    pub arch: String,              // "amd64" | "x86_64"
-    pub variant: String,           // "genericcloud" | "nocloud" | "GenericCloud"
-    pub format: String,            // "qcow2" | "raw"
-}
+All metadata consumed by the pickers lives in [`resources/indexes.json`](./resources/indexes.json).
+You can update this file manually or via your own automation to point to new
+indexes, additional mirrors, or entirely new distributions. At startup the
+application loads the file once and keeps it in memory for the rest of the
+session.
 
-#[derive(Debug, Clone)]
-pub struct ImageAsset {
-    pub url: String,
-    pub sha256: String,
-    pub filename: String,
-}
+## Troubleshooting
 
-async fn resolve(r: &ImageRequest, client: &Client) -> anyhow::Result<ImageAsset> {
-    let base = format!("https://cloud.debian.org/images/cloud/{}/latest/", r.codename_or_major);
-    // Fetch SHA256SUMS
-    let sums_url = format!("{base}SHA512SUMS");
-    let sums = client.get(&sums_url).send().await?.error_for_status()?.text().await?;
+- **No menu appears or it closes immediately** – Ensure your terminal supports
+  raw mode and that standard input/output are connected to a TTY.
+- **Download fails with an HTTP error** – Verify that the URL referenced in
+  `indexes.json` is publicly reachable and that you have network connectivity.
+- **Checksum mismatch / validation needs** – The current downloader saves files
+  without verifying checksums. If your workflow requires verification, extend
+  `helpers::image_resolver` to compute and compare hashes before confirming
+  success.
 
-    // Example names: debian-12-genericcloud-amd64.qcow2 | debian-12-nocloud-amd64.qcow2
-    let name_re = Regex::new(&format!(
-        r"(debian-\d+-{}-{}\.{})",
-        regex::escape(&r.variant.to_lowercase()),
-        if r.arch == "x86_64" { "amd64" } else { &r.arch },
-        regex::escape(&r.format)
-    ))?;
-
-    // Parse "SHA256SUMS": "abc123...  filename"
-    for line in sums.lines() {
-        if let Some(mat) = name_re.captures(line) {
-            let filename = mat.get(1).unwrap().as_str().to_string();
-            let sha = line.split_whitespace().next().unwrap().to_string();
-            return Ok(ImageAsset {
-                url: format!("{base}{filename}"),
-                sha256: sha,
-                filename,
-            });
-        }
-    }
-    anyhow::bail!("No matching Debian image for filters");
-}
-
-// Download + verify
-pub async fn download_and_verify(client: &Client, asset: &ImageAsset, out_path: &std::path::Path) -> anyhow::Result<()> {
-    let bytes = client.get(&asset.url).send().await?.error_for_status()?.bytes().await?;
-    let mut hasher = Sha512::new();
-    hasher.update(&bytes);
-    let got = hex::encode(hasher.finalize());
-    if got != asset.sha256.to_lowercase() {
-        anyhow::bail!("SHA512 mismatch: expected {}, got {}", asset.sha256, got);
-    }
-
-    write(out_path, &bytes).unwrap();
-
-    Ok(())
-}
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Debian bookworm genericcloud qcow2 (amd64)
-    let req = ImageRequest {
-        distro: "debian".into(),
-        codename_or_major: "bookworm".into(),
-        arch: "amd64".into(),
-        variant: "genericcloud".into(), // or "nocloud"
-        format: "qcow2".into(),
-    };
-
-    let client = reqwest::Client::new();
-    let asset = resolve(&req, &client).await?; // URL + SHA256 from CHECKSUM
-    download_and_verify(&client, &asset, std::path::Path::new(&asset.filename)).await?;
-
-    Ok(())
-}
-```
