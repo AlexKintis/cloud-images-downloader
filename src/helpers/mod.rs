@@ -21,7 +21,7 @@ pub fn arch_options_for(distro: &str) -> Vec<&'static str> {
         // You can widen these as your indexers evolve
         "Ubuntu" => vec!["amd64", "arm64", "ppc64el", "s390x"],
         "Debian" => vec!["amd64", "arm64"], // TODO(debian): confirm available arches from debian_list(...)
-        "AlmaLinux" => vec!["x86_64", "aarch64"], // TODO(almalinux): confirm from almalinux_list(...)
+        "AlmaLinux" => vec!["x86_64", "aarch64"],
         _ => vec!["amd64"],
     }
 }

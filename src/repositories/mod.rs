@@ -1,3 +1,4 @@
+pub mod almalinux;
 pub mod debian;
 mod models;
 pub mod ubuntu;
