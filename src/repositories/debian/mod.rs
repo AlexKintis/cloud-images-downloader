@@ -333,7 +333,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         .await
         .with_context(|| format!("fetch directory listing: {base}"))?;
 
-    let href_re = Regex::new(r#"href=\"([^\"/]+)/\""#)?;
+    let href_re = Regex::new(r#"href=['"]([^'"/]+)/['"]"#)?;
     let valid_dir_re = Regex::new(r"^(?:latest|\d{8}(?:-\d{4})?)$")?;
     let mut seen = HashSet::new();
     let mut dated_dirs: Vec<String> = Vec::new();
