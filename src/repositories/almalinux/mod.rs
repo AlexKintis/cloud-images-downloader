@@ -155,7 +155,7 @@ async fn fetch_major_versions() -> Result<Vec<String>> {
         .await
         .with_context(|| format!("fetch AlmaLinux directory listing from {root}"))?;
 
-    let dir_re = Regex::new(r#"href=\"(\d{1,2})/\""#)?;
+    let dir_re = Regex::new(r#"href=['"](?:[^"']*/)?(\d+(?:\.\d+)?(?:-beta)?)/['"]"#)?;
     let mut majors: Vec<String> = dir_re
         .captures_iter(&html)
         .map(|cap| cap[1].to_string())
