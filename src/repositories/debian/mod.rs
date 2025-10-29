@@ -231,7 +231,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
         dirs = head.iter().cloned().chain(tail.iter().cloned()).collect();
     }
 
-    // 2) For each subdir, read SHA256SUMS and parse artifacts
+    // 2) For each subdir, read SHA512SUMS and parse artifacts
     // Filenames look like:
     //   debian-12-genericcloud-amd64.qcow2
     //   debian-12-nocloud-amd64.qcow2
@@ -241,7 +241,7 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
     //   arch           = amd64|arm64
     //   ext            = qcow2|raw (you can keep/filter later)
     //
-    // SHA256SUMS lines are typically:
+    // SHA512SUMS lines are typically:
     //   <sha256>  debian-12-genericcloud-amd64.qcow2
     //
     let line_re = Regex::new(
@@ -251,11 +251,11 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
     let mut out = Vec::new();
 
     for d in dirs {
-        let sums_url = format!("{base}{d}/SHA256SUMS");
+        let sums_url = format!("{base}{d}/SHA512SUMS");
         let sums = match client.get(&sums_url).send().await {
             Ok(resp) => match resp.error_for_status() {
                 Ok(ok) => ok.text().await.unwrap_or_default(),
-                Err(_) => continue, // no SHA256SUMS in this dir; skip
+                Err(_) => continue, // no SHA512SUMS in this dir; skip
             },
             Err(_) => continue,
         };
@@ -270,13 +270,13 @@ pub async fn debian_list(codename: &str, arch: &str, _include_testing: bool) -> 
                 let filename = c.name("file").unwrap().as_str().to_string();
                 let distro_version = c.name("dver").unwrap().as_str().to_string();
                 let variant = c.name("variant").unwrap().as_str().to_string();
-                let checksum = c.name("sha").map(|cap| ImageChecksum::new(ChecksumKind::Sha256, cap.as_str()));
+                let checksum = c.name("sha").map(|cap| ImageChecksum::new(ChecksumKind::Sha512, cap.as_str()));
 
                 // You can choose to filter by ext here if you only want qcow2:
                 // let ext = c.name("ext").unwrap().as_str();
                 // if ext != "qcow2" { continue; }
 
-                let url = format!("{base}{d}/{}", filename);
+                let url = format!("{base}{d}/{filename}");
 
                 // "version" in your picker is the build dir (e.g., "latest" or "20241013-1744")
                 // "image_type" is the Debian variant (e.g., "genericcloud", "nocloud")

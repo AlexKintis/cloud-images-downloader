@@ -11,6 +11,7 @@
       "name": "debian", 
       "url": "https://cloud.debian.org/images/cloud/{}/latest/",
       "parameters": {
+          "index": "https://cloud.debian.org/images/cloud/"
       }
   }
 ]
