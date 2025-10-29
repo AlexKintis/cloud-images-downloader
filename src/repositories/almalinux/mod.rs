@@ -155,13 +155,13 @@ async fn fetch_major_versions() -> Result<Vec<String>> {
         .await
         .with_context(|| format!("fetch AlmaLinux directory listing from {root}"))?;
 
-    let dir_re = Regex::new(r#"href=['"](?:[^"']*/)?(\d+(?:\.\d+)?(?:-beta)?)/['"]"#)?;
+    let dir_re = Regex::new(r#"href=['"](?:[^"']*/)?(\d+)/['"]"#)?;
     let mut majors: Vec<String> = dir_re
         .captures_iter(&html)
         .map(|cap| cap[1].to_string())
         .collect();
 
-    majors.sort();
+    majors.sort_by_cached_key(|e| e.parse::<i32>().unwrap());
     majors.dedup();
     majors.reverse();
 
