@@ -92,11 +92,22 @@ async fn main() -> Result<()> {
     // Print the chosen structure (clean summary)
     print_selection(&distro, &arch, &version, &image);
 
-    let output = download_file(image.url()).await;
+    let action = choose_one("Action", vec!["Download image", "Show download link only"])?;
 
-    match output {
-        Ok(msg) => println!("{msg}"),
-        Err(err) => eprintln!("{err}"),
+    match action.as_str() {
+        "Download image" => {
+            let output = download_file(image.url()).await;
+
+            match output {
+                Ok(msg) => println!("{msg}"),
+                Err(err) => eprintln!("{err}"),
+            }
+        }
+        "Show download link only" => {
+            println!("\nDownload link:");
+            println!("{}", image.url());
+        }
+        _ => bail!("Unknown action selected"),
     }
 
     Ok(())
